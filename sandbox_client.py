@@ -17,28 +17,61 @@ import requests
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_WEBHOOK_LOG = SCRIPT_DIR / "data" / "received_events.jsonl"
 TERMINAL_STATUSES = {"completed", "failed", "refunded"}
+TRUE_VALUES = {"1", "true", "yes", "on"}
 
-
-def load_dotenv_file(path: Path) -> None:
+def load_dotenv_file(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
     if not path.exists():
-        return
+        return values
     for raw_line in path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, value = line.split("=", 1)
         key = key.strip()
-        if not key or key in os.environ:
+        if not key:
             continue
-        os.environ[key] = value.strip().strip("\"'")
+        values[key] = value.strip().strip("\"'")
+    return values
 
 
-load_dotenv_file(SCRIPT_DIR / ".env")
+DOTENV_VALUES = load_dotenv_file(SCRIPT_DIR / ".env")
+CONFIG_SOURCES: dict[str, str] = {}
+PREFER_PROCESS_ENV = os.getenv("KENSO_PREFER_PROCESS_ENV", "").strip().lower() in TRUE_VALUES
 
 
 def env(name: str, default: str = "") -> str:
-    value = os.getenv(name, default)
-    return value.strip()
+    process_value = os.getenv(name)
+    dotenv_value = DOTENV_VALUES.get(name)
+
+    if dotenv_value is not None and (process_value is None or not PREFER_PROCESS_ENV):
+        CONFIG_SOURCES[name] = ".env"
+        if process_value is not None and process_value.strip() != dotenv_value.strip():
+            print(
+                (
+                    f"[config] {name}: using .env value {mask_secret(dotenv_value)} "
+                    f"instead of process env {mask_secret(process_value)}. "
+                    "Set KENSO_PREFER_PROCESS_ENV=true to force shell overrides."
+                ),
+                file=sys.stderr,
+            )
+        return dotenv_value.strip()
+
+    if process_value is not None:
+        CONFIG_SOURCES[name] = "process_env"
+        return process_value.strip()
+
+    CONFIG_SOURCES[name] = "default"
+    return default.strip()
+
+
+def mask_secret(value: str, *, head: int = 12) -> str:
+    value = value.strip()
+    if not value:
+        return "<empty>"
+    if len(value) <= head:
+        return value
+    return value[:head] + "..."
 
 
 def resolve_local_path(path_text: str) -> Path:
@@ -58,6 +91,32 @@ def require_api_key() -> str:
     if not API_KEY:
         raise SystemExit("KENSO_API_KEY is required")
     return API_KEY
+
+
+def config_value_source(name: str) -> str:
+    return CONFIG_SOURCES.get(name, "unknown")
+
+
+def config_snapshot() -> dict[str, Any]:
+    return {
+        "api_base": {
+            "value": API_BASE,
+            "source": config_value_source("KENSO_API_BASE"),
+        },
+        "api_key": {
+            "value": mask_secret(API_KEY),
+            "source": config_value_source("KENSO_API_KEY"),
+        },
+        "webhook_secret": {
+            "value": mask_secret(env("KENSO_WEBHOOK_SECRET")),
+            "source": config_value_source("KENSO_WEBHOOK_SECRET"),
+        },
+        "webhook_event_log": {
+            "value": str(WEBHOOK_EVENT_LOG),
+            "source": config_value_source("KENSO_WEBHOOK_EVENT_LOG"),
+        },
+        "prefer_process_env": PREFER_PROCESS_ENV,
+    }
 
 
 def headers(extra: dict[str, str] | None = None) -> dict[str, str]:
@@ -555,6 +614,11 @@ def cmd_run_smoke_suite(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_show_config(args: argparse.Namespace) -> int:
+    print(pretty(config_snapshot()))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="KnownSense hosted sandbox test client")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -564,6 +628,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     list_fixtures_cmd = sub.add_parser("list-fixtures", help="List hosted sandbox fixtures")
     list_fixtures_cmd.set_defaults(func=cmd_list_fixtures)
+
+    show_config_cmd = sub.add_parser("show-config", help="Show resolved config values and their sources")
+    show_config_cmd.set_defaults(func=cmd_show_config)
 
     list_jobs_cmd = sub.add_parser("list-jobs", help="List analysis jobs for the current workspace")
     list_jobs_cmd.add_argument("--limit", type=int, default=20, help="Maximum jobs to return")

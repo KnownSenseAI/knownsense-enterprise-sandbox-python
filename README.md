@@ -85,6 +85,12 @@ cp .env.example .env
 Both scripts auto-load `.env` from this folder. You do not need to `export` it manually.
 Relative paths like `./data/received_events.jsonl` are resolved from this project directory, even if you launch the scripts from elsewhere.
 
+Config precedence:
+
+- by default, this starter prefers the repo `.env`
+- if a stale `KENSO_*` shell export disagrees with `.env`, the script prints a warning and still uses `.env`
+- if you intentionally want shell values to override `.env`, set `KENSO_PREFER_PROCESS_ENV=true`
+
 ## Required .env Values
 
 Use these as the minimum local values:
@@ -106,6 +112,8 @@ Field meanings:
   - only override it if you are intentionally testing against a developer backend
 - `KENSO_API_KEY`
   - sandbox API key from the dashboard
+- `KENSO_PREFER_PROCESS_ENV`
+  - optional override if you intentionally want shell-exported `KENSO_*` values to beat `.env`
 - `KENSO_WEBHOOK_SECRET`
   - signing secret returned when you create or rotate the sandbox webhook
 - `KENSO_WEBHOOK_EVENT_LOG`
@@ -201,6 +209,14 @@ If the dashboard shows `502 Bad Gateway`, the tunnel could not reach your local 
 python sandbox_client.py list-fixtures
 ```
 
+If you want to confirm exactly which key the script is using before you hit the API:
+
+```bash
+python sandbox_client.py show-config
+```
+
+That prints the resolved config source for each important value, including whether the current API key came from `.env` or from the shell.
+
 This returns the deterministic fixture windows and the expected terminal states. Use these instead of guessing sandbox time ranges.
 
 ## List Public Templates
@@ -210,6 +226,26 @@ python sandbox_client.py list-templates
 ```
 
 This confirms the API key works and gives your client the current public template contract.
+
+## Auth Troubleshooting
+
+Use this quick diagnostic order before attempting job creation:
+
+```bash
+python sandbox_client.py show-config
+python sandbox_client.py list-fixtures
+```
+
+Interpret the result like this:
+
+- `200` from `list-fixtures`
+  - your sandbox key is valid
+- `404 not_found/endpoint`
+  - the key is valid, but it is a production key, not a sandbox key
+- `401 auth/invalid_api_key`
+  - the key is wrong, revoked, malformed, or from another workspace/company
+
+Because `create-from-fixture` first calls `GET /api/v1/analysis/sandbox/fixtures`, you should always debug authentication with `list-fixtures` first.
 
 ## Recommended Test Flows
 
