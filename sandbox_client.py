@@ -717,17 +717,6 @@ def cmd_create_from_fixture(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_upload_live_audio(args: argparse.Namespace) -> int:
-    uploaded = upload_live_audio(
-        file_path=args.file,
-        mic_name=args.mic_name,
-        name=args.name,
-        description=args.description,
-    )
-    print(pretty(uploaded))
-    return 0
-
-
 def cmd_create_from_live_audio(args: argparse.Namespace) -> int:
     reference_data = read_json_file(args.reference_data_file) if args.reference_data_file else None
     checks = read_json_file(args.checks_file) if args.checks_file else None
@@ -840,16 +829,6 @@ def build_parser() -> argparse.ArgumentParser:
     create_cmd.add_argument("--interval-seconds", type=float, default=3.0, help="Polling interval")
     create_cmd.add_argument("--timeout-seconds", type=float, default=90.0, help="Polling timeout")
     create_cmd.set_defaults(func=cmd_create_from_fixture)
-
-    upload_live_audio_cmd = sub.add_parser(
-        "upload-live-audio",
-        help="Upload one sandbox audio file and return the reusable mic/time window",
-    )
-    upload_live_audio_cmd.add_argument("--file", required=True, help="Path to an audio file")
-    upload_live_audio_cmd.add_argument("--mic-name", default="", help="Optional sandbox mic display name")
-    upload_live_audio_cmd.add_argument("--name", default="", help="Optional live-audio fixture name")
-    upload_live_audio_cmd.add_argument("--description", default="", help="Optional live-audio fixture description")
-    upload_live_audio_cmd.set_defaults(func=cmd_upload_live_audio)
 
     create_live_audio_cmd = sub.add_parser(
         "create-from-live-audio",

@@ -24,7 +24,8 @@ What it does **not** prove:
 
 Optional real-audio sandbox testing does exercise Gemini on your uploaded file.
 It still keeps sandbox job/webhook isolation, but it consumes the root production
-company's analysis credits.
+company's analysis credits. Live-audio sandbox uploads are capped at 15 minutes
+per file, matching the intended production chunk size for controlled testing.
 
 This repo includes a small sample audio file:
 
@@ -149,19 +150,10 @@ Always fix `list-fixtures` before trying job creation.
 ### 3. Optional: test real audio through Gemini
 
 Use this when you want to validate the real Gemini analysis path without deploying hardware.
+Use a short audio clip. The sandbox live-audio upload endpoint accepts at most
+15 minutes per file.
 
-Upload only:
-
-```bash
-python sandbox_client.py upload-live-audio \
-  --file ./samples/bus_station_test.m4a \
-  --mic-name "Bus Station Test Audio"
-```
-
-The response includes a sandbox `mic_id`, `time_range_start_unix`, and `time_range_end_unix`.
-Use them within 1 hour. The uploaded live-audio window is one-time-use.
-
-Upload and immediately create the analysis job:
+Upload the sample audio and immediately create the analysis job:
 
 ```bash
 python sandbox_client.py create-from-live-audio \
@@ -182,6 +174,7 @@ python sandbox_client.py create-from-live-audio \
 
 If job creation fails after upload, the command prints the uploaded window first.
 You can retry manually with that returned `mic_id` and time range until it expires.
+The uploaded live-audio window is one-time-use and expires after 1 hour.
 
 Expected shape for the included sample:
 
@@ -323,6 +316,22 @@ Fix:
 - use the deterministic fixture flow for free contract testing, or
 - add production analysis credits before testing real audio
 
+### `create-from-live-audio` returns `400 request/invalid_sandbox_audio`
+
+The uploaded file is invalid or outside the live-audio sandbox constraints. The
+command uploads audio first, then creates the Gemini-backed analysis job.
+
+Common causes:
+
+- unsupported format
+- empty or unreadable audio
+- duration is longer than 15 minutes
+
+Fix:
+
+- use `.wav`, `.webm`, `.ogg`, `.opus`, `.mp3`, `.m4a/.mp4`, `.aac`, or `.flac`
+- trim the audio to 15 minutes or less
+
 ### `create-from-live-audio` says the upload is expired or already used
 
 Live-audio sandbox uploads are valid for 1 hour and are one-time-use.
@@ -374,7 +383,6 @@ and copy the seeded fixture values exactly.
 python sandbox_client.py show-config
 python sandbox_client.py list-fixtures
 python sandbox_client.py list-templates
-python sandbox_client.py upload-live-audio --file ./samples/bus_station_test.m4a
 python sandbox_client.py create-from-live-audio --file ./samples/bus_station_test.m4a --poll
 python sandbox_client.py list-jobs --limit 10
 python sandbox_client.py get-job --job-id job_...
