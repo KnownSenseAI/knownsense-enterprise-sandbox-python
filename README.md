@@ -15,14 +15,14 @@ What this starter proves:
 - webhook delivery
 - webhook signature verification
 - completed and refunded terminal states
-- optional real-audio sandbox upload through the live Gemini backend
+- optional real-audio sandbox upload through the live analysis backend
 
 What it does **not** prove:
 
 - live production audio quality
 - customer-specific business logic in your own app
 
-Optional real-audio sandbox testing does exercise Gemini on your uploaded file.
+Optional real-audio sandbox testing does exercise the live analysis backend on your uploaded file.
 It still keeps sandbox job/webhook isolation, but it consumes the root production
 company's analysis credits. Live-audio sandbox uploads are capped at 15 minutes
 per file, matching the intended production chunk size for controlled testing.
@@ -147,9 +147,9 @@ Interpret the result:
 
 Always fix `list-fixtures` before trying job creation.
 
-### 3. Optional: test real audio through Gemini
+### 3. Optional: test real audio through live analysis
 
-Use this when you want to validate the real Gemini analysis path without deploying hardware.
+Use this when you want to validate the live analysis path without deploying hardware.
 Use a short audio clip. The sandbox live-audio upload endpoint accepts at most
 15 minutes per file.
 
@@ -309,7 +309,7 @@ Fix `list-fixtures` first.
 
 ### `create-from-live-audio` returns `402 billing/insufficient_credits`
 
-Live-audio sandbox tests use the real Gemini backend and consume the root production company's analysis credits.
+Live-audio sandbox tests use the live analysis backend and consume the root production company's analysis credits.
 
 Fix:
 
@@ -319,7 +319,7 @@ Fix:
 ### `create-from-live-audio` returns `400 request/invalid_sandbox_audio`
 
 The uploaded file is invalid or outside the live-audio sandbox constraints. The
-command uploads audio first, then creates the Gemini-backed analysis job.
+command uploads audio first, then creates the live analysis job.
 
 Common causes:
 

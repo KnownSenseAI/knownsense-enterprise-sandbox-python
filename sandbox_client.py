@@ -832,7 +832,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     create_live_audio_cmd = sub.add_parser(
         "create-from-live-audio",
-        help="Upload sandbox audio and immediately create a real Gemini-backed analysis job",
+        help="Upload sandbox audio and immediately create a live analysis job",
     )
     create_live_audio_cmd.add_argument("--file", required=True, help="Path to an audio file")
     create_live_audio_cmd.add_argument(
