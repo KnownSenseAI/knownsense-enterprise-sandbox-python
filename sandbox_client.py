@@ -151,6 +151,29 @@ def request_json(
     return response.json()
 
 
+def request_multipart(
+    path: str,
+    *,
+    file_path: Path,
+    form_fields: dict[str, str] | None = None,
+) -> Any:
+    url = f"{ANALYSIS_BASE}{path}"
+    req_headers = headers()
+    with file_path.open("rb") as fh:
+        response = requests.post(
+            url,
+            headers=req_headers,
+            files={"file": (file_path.name, fh)},
+            data=form_fields or {},
+            timeout=120,
+        )
+    if not response.ok:
+        raise RuntimeError(f"{response.status_code} {response.text}")
+    if not response.text:
+        return None
+    return response.json()
+
+
 def list_templates() -> list[dict[str, Any]]:
     data = request_json("GET", "/templates")
     if not isinstance(data, list):
@@ -211,6 +234,37 @@ def build_fixture_payload(
     return payload
 
 
+def build_time_window_payload(
+    *,
+    template_id: str,
+    mic_id: str,
+    time_range_start_unix: int,
+    time_range_end_unix: int,
+    instructions: str = "",
+    reference_data: dict[str, Any] | None = None,
+    checks: list[dict[str, Any]] | None = None,
+    external_reference_id: str = "",
+    free_text_notes: str = "",
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "template_id": template_id,
+        "mic_ids": [mic_id],
+        "time_range_start_unix": time_range_start_unix,
+        "time_range_end_unix": time_range_end_unix,
+    }
+    if instructions:
+        payload["instructions"] = instructions
+    if reference_data:
+        payload["reference_data"] = reference_data
+    if checks:
+        payload["checks"] = checks
+    if external_reference_id:
+        payload["external_reference_id"] = external_reference_id
+    if free_text_notes:
+        payload["free_text_notes"] = free_text_notes
+    return payload
+
+
 def create_job(payload: dict[str, Any], *, idempotency_key: str | None = None) -> dict[str, Any]:
     idem_key = idempotency_key or f"sandbox-{uuid.uuid4().hex[:16]}"
     data = request_json(
@@ -249,6 +303,71 @@ def create_from_fixture(
         free_text_notes=free_text_notes,
     )
     return create_job(payload, idempotency_key=f"sandbox-{fixture_id}-{uuid.uuid4().hex[:12]}")
+
+
+def upload_live_audio(
+    *,
+    file_path: str,
+    mic_name: str = "",
+    name: str = "",
+    description: str = "",
+) -> dict[str, Any]:
+    resolved_path = resolve_local_path(file_path)
+    if not resolved_path.exists():
+        raise RuntimeError(f"Audio file not found: {resolved_path}")
+    if not resolved_path.is_file():
+        raise RuntimeError(f"Audio path is not a file: {resolved_path}")
+
+    data = request_multipart(
+        "/sandbox/audio",
+        file_path=resolved_path,
+        form_fields={
+            key: value
+            for key, value in {
+                "mic_name": mic_name.strip(),
+                "name": name.strip(),
+                "description": description.strip(),
+            }.items()
+            if value
+        },
+    )
+    if not isinstance(data, dict):
+        raise RuntimeError("Unexpected live-audio upload response")
+    return data
+
+
+def create_from_live_audio(
+    *,
+    file_path: str,
+    template_id: str,
+    instructions: str = "",
+    reference_data: dict[str, Any] | None = None,
+    checks: list[dict[str, Any]] | None = None,
+    external_reference_id: str = "",
+    free_text_notes: str = "",
+    mic_name: str = "",
+    name: str = "",
+    description: str = "",
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    uploaded = upload_live_audio(
+        file_path=file_path,
+        mic_name=mic_name,
+        name=name,
+        description=description,
+    )
+    payload = build_time_window_payload(
+        template_id=template_id,
+        mic_id=str(uploaded["mic_id"]),
+        time_range_start_unix=int(uploaded["time_range_start_unix"]),
+        time_range_end_unix=int(uploaded["time_range_end_unix"]),
+        instructions=instructions,
+        reference_data=reference_data,
+        checks=checks,
+        external_reference_id=external_reference_id,
+        free_text_notes=free_text_notes,
+    )
+    job = create_job(payload, idempotency_key=f"live-audio-{uuid.uuid4().hex[:16]}")
+    return uploaded, job
 
 
 def get_job(job_id: str) -> dict[str, Any]:
@@ -598,6 +717,54 @@ def cmd_create_from_fixture(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_upload_live_audio(args: argparse.Namespace) -> int:
+    uploaded = upload_live_audio(
+        file_path=args.file,
+        mic_name=args.mic_name,
+        name=args.name,
+        description=args.description,
+    )
+    print(pretty(uploaded))
+    return 0
+
+
+def cmd_create_from_live_audio(args: argparse.Namespace) -> int:
+    reference_data = read_json_file(args.reference_data_file) if args.reference_data_file else None
+    checks = read_json_file(args.checks_file) if args.checks_file else None
+    uploaded = upload_live_audio(
+        file_path=args.file,
+        mic_name=args.mic_name,
+        name=args.name,
+        description=args.description,
+    )
+    print(pretty({"uploaded_fixture": uploaded}))
+    payload = build_time_window_payload(
+        template_id=args.template_id,
+        mic_id=str(uploaded["mic_id"]),
+        time_range_start_unix=int(uploaded["time_range_start_unix"]),
+        time_range_end_unix=int(uploaded["time_range_end_unix"]),
+        instructions=args.instructions,
+        reference_data=reference_data,
+        checks=checks,
+        external_reference_id=args.external_reference_id,
+        free_text_notes=args.free_text_notes,
+    )
+    job = create_job(payload, idempotency_key=f"live-audio-{uuid.uuid4().hex[:16]}")
+    print(pretty({"job": job}))
+    if args.wait_webhook:
+        event = wait_for_job_webhook_event(
+            job_id=str(job["job_id"]),
+            event_type=args.expected_event_type,
+            log_path=WEBHOOK_EVENT_LOG,
+            timeout_seconds=args.webhook_timeout_seconds,
+        )
+        print(pretty({"webhook_event": event}))
+    if args.poll:
+        terminal = poll_job(job["job_id"], args.interval_seconds, args.timeout_seconds)
+        print(pretty(terminal))
+    return 0
+
+
 def cmd_poll_job(args: argparse.Namespace) -> int:
     print(pretty(poll_job(args.job_id, args.interval_seconds, args.timeout_seconds)))
     return 0
@@ -673,6 +840,55 @@ def build_parser() -> argparse.ArgumentParser:
     create_cmd.add_argument("--interval-seconds", type=float, default=3.0, help="Polling interval")
     create_cmd.add_argument("--timeout-seconds", type=float, default=90.0, help="Polling timeout")
     create_cmd.set_defaults(func=cmd_create_from_fixture)
+
+    upload_live_audio_cmd = sub.add_parser(
+        "upload-live-audio",
+        help="Upload one sandbox audio file and return the reusable mic/time window",
+    )
+    upload_live_audio_cmd.add_argument("--file", required=True, help="Path to an audio file")
+    upload_live_audio_cmd.add_argument("--mic-name", default="", help="Optional sandbox mic display name")
+    upload_live_audio_cmd.add_argument("--name", default="", help="Optional live-audio fixture name")
+    upload_live_audio_cmd.add_argument("--description", default="", help="Optional live-audio fixture description")
+    upload_live_audio_cmd.set_defaults(func=cmd_upload_live_audio)
+
+    create_live_audio_cmd = sub.add_parser(
+        "create-from-live-audio",
+        help="Upload sandbox audio and immediately create a real Gemini-backed analysis job",
+    )
+    create_live_audio_cmd.add_argument("--file", required=True, help="Path to an audio file")
+    create_live_audio_cmd.add_argument(
+        "--template-id",
+        default="generic.analysis.v1",
+        help="Template ID to use for the analysis job",
+    )
+    create_live_audio_cmd.add_argument("--mic-name", default="", help="Optional sandbox mic display name")
+    create_live_audio_cmd.add_argument("--name", default="", help="Optional live-audio fixture name")
+    create_live_audio_cmd.add_argument("--description", default="", help="Optional live-audio fixture description")
+    create_live_audio_cmd.add_argument("--instructions", default="", help="Optional bounded instructions")
+    create_live_audio_cmd.add_argument("--reference-data-file", default="", help="Path to a JSON file for reference_data")
+    create_live_audio_cmd.add_argument("--checks-file", default="", help="Path to a JSON file for checks[]")
+    create_live_audio_cmd.add_argument("--external-reference-id", default="", help="Optional correlation ID echoed by the API")
+    create_live_audio_cmd.add_argument("--free-text-notes", default="", help="Optional free_text_notes field")
+    create_live_audio_cmd.add_argument(
+        "--wait-webhook",
+        action="store_true",
+        help="Wait for a matching terminal webhook in the local receiver log",
+    )
+    create_live_audio_cmd.add_argument(
+        "--expected-event-type",
+        default="job.completed",
+        help="Terminal event type to wait for when --wait-webhook is enabled",
+    )
+    create_live_audio_cmd.add_argument(
+        "--webhook-timeout-seconds",
+        type=float,
+        default=120.0,
+        help="Webhook wait timeout when --wait-webhook is enabled",
+    )
+    create_live_audio_cmd.add_argument("--poll", action="store_true", help="Poll until terminal status")
+    create_live_audio_cmd.add_argument("--interval-seconds", type=float, default=3.0, help="Polling interval")
+    create_live_audio_cmd.add_argument("--timeout-seconds", type=float, default=120.0, help="Polling timeout")
+    create_live_audio_cmd.set_defaults(func=cmd_create_from_live_audio)
 
     poll_cmd = sub.add_parser("poll-job", help="Poll a sandbox job until terminal status")
     poll_cmd.add_argument("--job-id", required=True, help="Analysis job ID")
