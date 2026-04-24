@@ -26,6 +26,18 @@ Optional real-audio sandbox testing does exercise Gemini on your uploaded file.
 It still keeps sandbox job/webhook isolation, but it consumes the root production
 company's analysis credits.
 
+This repo includes a small sample audio file:
+
+```text
+samples/bus_station_test.m4a
+```
+
+An example completed response for that file is available at:
+
+```text
+examples/live_audio_completed_response.json
+```
+
 ## Before You Start
 
 You need:
@@ -142,8 +154,8 @@ Upload only:
 
 ```bash
 python sandbox_client.py upload-live-audio \
-  --file ./sample.wav \
-  --mic-name "Front Counter Test Audio"
+  --file ./samples/bus_station_test.m4a \
+  --mic-name "Bus Station Test Audio"
 ```
 
 The response includes a sandbox `mic_id`, `time_range_start_unix`, and `time_range_end_unix`.
@@ -153,7 +165,7 @@ Upload and immediately create the analysis job:
 
 ```bash
 python sandbox_client.py create-from-live-audio \
-  --file ./sample.wav \
+  --file ./samples/bus_station_test.m4a \
   --template-id generic.analysis.v1 \
   --poll
 ```
@@ -162,7 +174,7 @@ With webhook verification:
 
 ```bash
 python sandbox_client.py create-from-live-audio \
-  --file ./sample.wav \
+  --file ./samples/bus_station_test.m4a \
   --template-id generic.analysis.v1 \
   --wait-webhook \
   --poll
@@ -170,6 +182,15 @@ python sandbox_client.py create-from-live-audio \
 
 If job creation fails after upload, the command prints the uploaded window first.
 You can retry manually with that returned `mic_id` and time range until it expires.
+
+Expected shape for the included sample:
+
+- `status` becomes `completed`
+- `estimated_credits` and `actual_credits` are normally `2`
+- `result.core_analysis` contains findings, highlights, recommendations, and summary
+- `audio_artifact.status` becomes `ready`
+- `audio_artifact.download_url` is a short-lived signed URL; do not store it permanently
+- full example: `examples/live_audio_completed_response.json`
 
 ### 4. Confirm webhook reachability from the dashboard
 
@@ -353,8 +374,8 @@ and copy the seeded fixture values exactly.
 python sandbox_client.py show-config
 python sandbox_client.py list-fixtures
 python sandbox_client.py list-templates
-python sandbox_client.py upload-live-audio --file ./sample.wav
-python sandbox_client.py create-from-live-audio --file ./sample.wav --poll
+python sandbox_client.py upload-live-audio --file ./samples/bus_station_test.m4a
+python sandbox_client.py create-from-live-audio --file ./samples/bus_station_test.m4a --poll
 python sandbox_client.py list-jobs --limit 10
 python sandbox_client.py get-job --job-id job_...
 python sandbox_client.py poll-job --job-id job_...
