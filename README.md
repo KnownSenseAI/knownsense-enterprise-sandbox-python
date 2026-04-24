@@ -15,12 +15,29 @@ What this starter proves:
 - webhook delivery
 - webhook signature verification
 - completed and refunded terminal states
+- optional real-audio sandbox upload through the live Gemini backend
 
 What it does **not** prove:
 
 - live production audio quality
-- Gemini output quality on real shop audio
 - customer-specific business logic in your own app
+
+Optional real-audio sandbox testing does exercise Gemini on your uploaded file.
+It still keeps sandbox job/webhook isolation, but it consumes the root production
+company's analysis credits. Live-audio sandbox uploads are capped at 15 minutes
+per file, matching the intended production chunk size for controlled testing.
+
+This repo includes a small sample audio file:
+
+```text
+samples/bus_station_test.m4a
+```
+
+An example completed response for that file is available at:
+
+```text
+examples/live_audio_completed_response.json
+```
 
 ## Before You Start
 
@@ -126,10 +143,49 @@ Interpret the result:
 - `200`: sandbox key is valid
 - `404 not_found/endpoint`: key is valid, but it is a **production** key
 - `401 auth/invalid_api_key`: key is wrong, revoked, malformed, or there is a backend auth issue
+- `403 auth/api_disabled`: key is valid, but API access is disabled for that workspace
 
 Always fix `list-fixtures` before trying job creation.
 
-### 3. Confirm webhook reachability from the dashboard
+### 3. Optional: test real audio through Gemini
+
+Use this when you want to validate the real Gemini analysis path without deploying hardware.
+Use a short audio clip. The sandbox live-audio upload endpoint accepts at most
+15 minutes per file.
+
+Upload the sample audio and immediately create the analysis job:
+
+```bash
+python sandbox_client.py create-from-live-audio \
+  --file ./samples/bus_station_test.m4a \
+  --template-id generic.analysis.v1 \
+  --poll
+```
+
+With webhook verification:
+
+```bash
+python sandbox_client.py create-from-live-audio \
+  --file ./samples/bus_station_test.m4a \
+  --template-id generic.analysis.v1 \
+  --wait-webhook \
+  --poll
+```
+
+If job creation fails after upload, the command prints the uploaded window first.
+You can retry manually with that returned `mic_id` and time range until it expires.
+The uploaded live-audio window is one-time-use and expires after 1 hour.
+
+Expected shape for the included sample:
+
+- `status` becomes `completed`
+- `estimated_credits` and `actual_credits` are normally `2`
+- `result.core_analysis` contains findings, highlights, recommendations, and summary
+- `audio_artifact.status` becomes `ready`
+- `audio_artifact.download_url` is a short-lived signed URL; do not store it permanently
+- full example: `examples/live_audio_completed_response.json`
+
+### 4. Confirm webhook reachability from the dashboard
 
 In dashboard settings, click **Send Test**.
 
@@ -140,7 +196,7 @@ Expected result:
 
 This only proves webhook delivery reachability. It does **not** prove analysis job creation yet.
 
-### 4. Happy-path webhook flow
+### 5. Happy-path webhook flow
 
 ```bash
 python sandbox_client.py create-from-fixture \
@@ -157,7 +213,7 @@ This proves:
 - async processing
 - terminal `job.completed` webhook delivery
 
-### 5. Refunded terminal flow
+### 6. Refunded terminal flow
 
 ```bash
 python sandbox_client.py create-from-fixture \
@@ -169,7 +225,7 @@ python sandbox_client.py create-from-fixture \
 
 This proves your integration handles a terminal refunded path, not only success.
 
-### 6. Polling-only flow
+### 7. Polling-only flow
 
 ```bash
 python sandbox_client.py create-from-fixture \
@@ -180,7 +236,7 @@ python sandbox_client.py create-from-fixture \
 
 This proves your fallback polling path works even if webhooks are unavailable.
 
-### 7. Full smoke suite
+### 8. Full smoke suite
 
 ```bash
 python sandbox_client.py run-smoke-suite --verify-webhooks
@@ -235,11 +291,55 @@ Fix:
 3. rerun `python sandbox_client.py list-fixtures`
 4. if it still fails, share the returned `request_id` with KnownSense support
 
+### `list-fixtures` returns `403 auth/api_disabled`
+
+Your key is valid, but API access is disabled on that workspace.
+
+Fix:
+
+1. enable API access in the dashboard, or ask KnownSense support to enable it
+2. generate a fresh sandbox API key if the old key was revoked
+3. rerun `python sandbox_client.py list-fixtures`
+
 ### `create-from-fixture` fails before creating a job
 
 `create-from-fixture` first loads sandbox fixtures. If auth or fixture discovery is broken, job creation never starts.
 
 Fix `list-fixtures` first.
+
+### `create-from-live-audio` returns `402 billing/insufficient_credits`
+
+Live-audio sandbox tests use the real Gemini backend and consume the root production company's analysis credits.
+
+Fix:
+
+- use the deterministic fixture flow for free contract testing, or
+- add production analysis credits before testing real audio
+
+### `create-from-live-audio` returns `400 request/invalid_sandbox_audio`
+
+The uploaded file is invalid or outside the live-audio sandbox constraints. The
+command uploads audio first, then creates the Gemini-backed analysis job.
+
+Common causes:
+
+- unsupported format
+- empty or unreadable audio
+- duration is longer than 15 minutes
+
+Fix:
+
+- use `.wav`, `.webm`, `.ogg`, `.opus`, `.mp3`, `.m4a/.mp4`, `.aac`, or `.flac`
+- trim the audio to 15 minutes or less
+
+### `create-from-live-audio` says the upload is expired or already used
+
+Live-audio sandbox uploads are valid for 1 hour and are one-time-use.
+
+Fix:
+
+- upload the file again
+- use the newly returned `mic_id` and time range
 
 ### `--wait-webhook` times out
 
@@ -283,6 +383,7 @@ and copy the seeded fixture values exactly.
 python sandbox_client.py show-config
 python sandbox_client.py list-fixtures
 python sandbox_client.py list-templates
+python sandbox_client.py create-from-live-audio --file ./samples/bus_station_test.m4a --poll
 python sandbox_client.py list-jobs --limit 10
 python sandbox_client.py get-job --job-id job_...
 python sandbox_client.py poll-job --job-id job_...

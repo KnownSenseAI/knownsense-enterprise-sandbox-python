@@ -1,0 +1,125 @@
+{
+  "job_id": "job_6eb6bf57-a6e",
+  "environment": "sandbox",
+  "trigger_source": "api",
+  "template_id": "generic.analysis.v1",
+  "template_name": "General Analysis",
+  "result_kind": "generic.analysis.v1",
+  "schema_version": "v1",
+  "execution_tier": "flex",
+  "mic_ids": [
+    "sbx_live_f035093b-2fe"
+  ],
+  "mic_names": [
+    "bus_station_test"
+  ],
+  "time_range_start_unix": 1777012595,
+  "time_range_end_unix": 1777012668,
+  "status": "completed",
+  "estimated_credits": 2,
+  "actual_credits": 2,
+  "actual_audio_duration_ms": 72917,
+  "cached": false,
+  "result": {
+    "core_analysis": {
+      "summary": "The audio captures a customer booking an AC sleeper bus ticket to Anand Vihar, Delhi, for a 6 PM departure. The staff clearly communicated the weekend pricing and collected the booking details. The interaction concluded with an inquiry about the preferred payment method.",
+      "minutes_analyzed": 1,
+      "speaker_breakdown": {
+        "customer": 0.5,
+        "staff": 0.5
+      },
+      "findings": [
+        {
+          "category": "order",
+          "severity": "info",
+          "title": "AC Sleeper Bus Ticket Booked",
+          "description": "A customer successfully booked an AC sleeper bus ticket to Anand Vihar, Delhi, for a 6 PM departure, arriving at 11 PM.",
+          "evidence_ref": {
+            "segment_id": "seg_c1572802-d40",
+            "offset_ms": 0,
+            "absolute_time": "2026-04-24T06:36:25Z",
+            "span_text": "wohi ticket book kar do."
+          }
+        },
+        {
+          "category": "upsell",
+          "severity": "info",
+          "title": "Weekend Fare Explained",
+          "description": "The staff informed the customer that the ticket price was higher because it was Sunday.",
+          "evidence_ref": {
+            "segment_id": "seg_c1572802-d40",
+            "offset_ms": 0,
+            "absolute_time": "2026-04-24T06:36:34Z",
+            "span_text": "aaj Sunday pe kiraya lagega. Shanivar Sunday kiraya mehnga rehta hai."
+          }
+        },
+        {
+          "category": "customer_service",
+          "severity": "info",
+          "title": "Customer Information Collected",
+          "description": "The staff collected the customer's name and mobile number for the booking.",
+          "evidence_ref": {
+            "segment_id": "seg_c1572802-d40",
+            "offset_ms": 10000,
+            "absolute_time": "2026-04-24T06:36:45Z",
+            "span_text": "naam bolo aapka? Ramgopal. Mobile number bolo? [redacted]."
+          }
+        },
+        {
+          "category": "payment",
+          "severity": "info",
+          "title": "Payment Method Inquiry",
+          "description": "At the end of the booking process, the staff asked about the customer's preferred payment method.",
+          "evidence_ref": {
+            "segment_id": "seg_c1572802-d40",
+            "offset_ms": 35000,
+            "absolute_time": "2026-04-24T06:37:10Z",
+            "span_text": "Online karoge cash karoge?"
+          }
+        }
+      ],
+      "highlights": [
+        {
+          "type": "inquiry",
+          "description": "Customer inquires about bus type and destination.",
+          "time_ref": {
+            "segment_id": "seg_c1572802-d40",
+            "offset_ms": 0,
+            "absolute_time": "2026-04-24T06:36:06Z"
+          }
+        },
+        {
+          "type": "order",
+          "description": "Customer requests to book the ticket.",
+          "time_ref": {
+            "segment_id": "seg_c1572802-d40",
+            "offset_ms": 0,
+            "absolute_time": "2026-04-24T06:36:25Z"
+          }
+        },
+        {
+          "type": "action",
+          "description": "Staff confirms the allocated seat number.",
+          "time_ref": {
+            "segment_id": "seg_c1572802-d40",
+            "offset_ms": 19000,
+            "absolute_time": "2026-04-24T06:36:54Z"
+          }
+        }
+      ],
+      "recommendations": [
+        "Explain weekend pricing policies upfront to manage customer expectations.",
+        "Offer a digital payment option for faster transactions.",
+        "Confirm all booking details before asking for payment.",
+        "Display real-time seat availability and pricing to customers."
+      ]
+    }
+  },
+  "audio_artifact": {
+    "status": "ready",
+    "download_url": "https://storage.googleapis.com/.../analysis_artifacts/sbx_94a6936f-a6f/job_6eb6bf57-a6e.m4a?...",
+    "expires_at_unix": 1777016347
+  },
+  "created_at_unix": 1777012677,
+  "completed_at_unix": 1777012732
+}
